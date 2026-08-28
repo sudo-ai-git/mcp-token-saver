@@ -52,6 +52,7 @@ LEDGER_PATH = os.environ.get(
 # NowPayments API endpoints (live; sandbox is same host with a test key)
 API_BASE = "https://api.nowpayments.io/v1"
 CREATE_PAYMENT_PATH = "/payment"
+CREATE_INVOICE_PATH = "/invoice"
 PAYMENT_STATUS_PATH = "/payment/{payment_id}"
 
 # Secure credential store (0600, merchant-owned, never committed/logged).
@@ -451,6 +452,52 @@ class NowPayments:
         )
         if r.status_code != 201:
             raise PaymentError(f"NowPayments create_payment failed: {r.status_code} {r.text[:200]}")
+        return r.json()
+
+    def create_invoice(self, price_usd: float = WIN_PRICE_USD,
+                       order_id: str = "") -> Dict[str, Any]:
+        """Create a NOWPayments HOSTED invoice (/v1/invoice) that returns a
+        `invoice_url` (the nowpayments.io hosted checkout page). This is how we
+        give buyers the nice hosted payment UI AND keep our order_id flowing
+        into the IPN so the webhook activates the Pro entitlement.
+
+        The invoice carries our order_id + ipn_callback_url, so when the buyer
+        pays, NOWPayments fires an HMAC-signed IPN with OUR order_id -> the
+        webhook recognises it and mints 30-day access (verified live).
+        """
+        payload: Dict[str, Any] = {
+            "price_amount": float(price_usd),
+            "price_currency": "usd",
+            "order_id": order_id or f"pro_{int(time.time()*1000)}",
+            "order_description": "DeeperThawt Pro — 30 days",
+            "ipn_callback_url": os.environ.get(
+                "NOWPAYMENTS_CALLBACK_URL",
+                "https://mcp-token-saver-pro.fly.dev/nowpayments/ipn",
+            ),
+            "success_url": os.environ.get(
+                "NOWPAYMENTS_SUCCESS_URL", "https://sudo-ai-git.github.io/deeperthawt/?payment=success"),
+            "cancel_url": os.environ.get(
+                "NOWPAYMENTS_CANCEL_URL", "https://sudo-ai-git.github.io/deeperthawt/?payment=cancelled"),
+        }
+        if self._post is not None:
+            return self._post(payload)
+        import requests
+        r = requests.post(
+            self.base + CREATE_INVOICE_PATH,
+            json=payload,
+            headers={
+                "x-api-key": self.api_key,
+                "Content-Type": "application/json",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                ),
+            },
+            timeout=30,
+        )
+        if r.status_code not in (200, 201):
+            raise PaymentError(f"NowPayments create_invoice failed: {r.status_code} {r.text[:200]}")
         return r.json()
 
     def verify_webhook(self, raw_body: str, signature: str) -> Dict[str, Any]:

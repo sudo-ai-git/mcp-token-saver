@@ -101,6 +101,20 @@ class NowPaymentsWebhookHandler(BaseHTTPRequestHandler):
         order = req.get("order_id") or f"pro_{int(__import__('time').time()*1000)}"
         try:
             pay = self._get_pay()
+            # invoice=True => create a NOWPayments HOSTED invoice and return the
+            # invoice_url (hosted checkout page) so the buyer gets NOWPayments'
+            # full payment UI. The invoice carries our order_id + ipn_callback_url,
+            # so the IPN activates Pro on payment.
+            if req.get("invoice", False):
+                inv = pay.create_invoice(price_usd=price, order_id=order)
+                self._send({
+                    "invoice": True,
+                    "order_id": order,
+                    "invoice_id": inv.get("id"),
+                    "invoice_url": inv.get("invoice_url"),
+                    "pay_url": inv.get("invoice_url"),
+                })
+                return
             result = pay.create_payment(price_usd=price, coins=coins, order_id=order)
             # API-created payments have NO hosted pay_url — the buyer pays by
             # sending the exact amount to `pay_address`. Surface that + the
