@@ -107,12 +107,15 @@
   seconds instead of a line-item mystery on a token dashboard."</div>
 
   <div class="card">
-    <h2>Start free — 1 hour is enough</h2>
-    <p class="meta">The value is an <b>instant number</b>, so an hour is all it takes to see it.
-    No card, no crypto, no signup wall to get the free tool.</p>
-    <div style="margin-top:16px">
+    <h2>Start free — 1 hour of Pro</h2>
+    <p class="meta">Get the <b>full Pro assessment for 1 hour</b> — the de-identified
+    server-side semantic-delta number for your own log. No card, no crypto, no signup.</p>
+    <div style="margin-top:16px" class="row">
+      <button class="btn" id="trialBtn">Start 1-hour Pro trial</button>
       <a class="btn ghost" href="https://github.com/sudo-ai-git/mcp-token-saver">Get the free MIT tool</a>
     </div>
+    <div class="status" id="trialStatus"></div>
+    <div class="err" id="trialErr"></div>
   </div>
 
   <div class="card">
@@ -157,6 +160,41 @@
   const status = document.getElementById("status");
   const errEl = document.getElementById("err");
   const paybox = document.getElementById("paybox");
+  const trialBtn = document.getElementById("trialBtn");
+  const trialStatus = document.getElementById("trialStatus");
+  const trialErr = document.getElementById("trialErr");
+
+  // ---- 1-hour Pro trial ----
+  const TRIAL_KEY = "mcp_token_saver_trial_order";
+  trialBtn.addEventListener("click", async () => {
+    trialBtn.disabled = true;
+    trialErr.textContent = "";
+    // Reuse a stored trial order so one browser = one trial (idempotent on backend)
+    let order = localStorage.getItem(TRIAL_KEY);
+    if (!order) {
+      order = crypto.randomUUID ? crypto.randomUUID() : "trial_" + Date.now() + Math.random().toString(16).slice(2);
+      localStorage.setItem(TRIAL_KEY, order);
+    }
+    trialStatus.textContent = "Starting your 1-hour Pro trial…";
+    try {
+      const res = await fetch(API_BASE + "/nowpayments/trial", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({order_id: order})
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "trial request failed");
+      const expires = new Date(data.expires_at);
+      const mins = Math.floor((expires - Date.now()) / 60000);
+      trialStatus.textContent = `Pro trial active — ${data.kind}, expires in ~${Math.max(mins, 0)} minute${mins === 1 ? "" : "s"}. Check your assessment, then go Pro if you like it.`;
+      trialBtn.textContent = "Trial started";
+      trialBtn.disabled = true;
+    } catch (e) {
+      trialErr.textContent = "Couldn't start trial (backend may be warming up): " + e.message;
+      trialBtn.disabled = false;
+      trialBtn.textContent = "Start 1-hour Pro trial";
+    }
+  });
 
   buyBtn.addEventListener("click", async () => {
     buyBtn.disabled = true;
