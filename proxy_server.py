@@ -61,20 +61,36 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._json({"error": "not_found"}, 404)
 
     # -- forward upstream ------------------------------------------------
-    def _forward(self, body: Dict[str, Any], headers: Dict[str, str]) -> Any:
+    def _forward(self, body: Dict[str, Any], headers: Dict[str, str],
+                 stream: bool = False):
+        """Forward to upstream. If stream=True, yields (status, header_dict, chunk_bytes)
+        as chunks arrive (SSE passthrough). Else returns (status, headers, bytes)."""
         upstream = os.environ.get("UPSTREAM_BASE_URL", "https://api.openai.com/v1")
-        # forward the client's Authorization + content-type; never log key
         req_headers = {k: v for k, v in headers.items()
                        if k.lower() in ("authorization", "content-type", "x-api-key", "accept")
                        or k.startswith("x-")}
         data = json.dumps(body).encode()
         req = urllib.request.Request(upstream.rstrip("/") + "/chat/completions",
                                      data=data, headers=req_headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                return resp.status, resp.headers, resp.read()
-        except urllib.error.HTTPError as e:
-            return e.code, e.headers, e.read()
+        if not stream:
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    return resp.status, resp.headers, resp.read()
+            except urllib.error.HTTPError as e:
+                return e.code, e.headers, e.read()
+        # STREAMING: stream chunks back as they arrive (SSE passthrough)
+        def gen():
+            try:
+                resp = urllib.request.urlopen(req, timeout=None)
+                yield resp.status, resp.headers
+                while True:
+                    chunk = resp.read(4096)
+                    if not chunk:
+                        break
+                    yield chunk
+            except urllib.error.HTTPError as e:
+                yield e.code, e.read()
+        return gen()
 
     # -- main ------------------------------------------------------------
     def do_POST(self) -> None:
@@ -99,11 +115,28 @@ class ProxyHandler(BaseHTTPRequestHandler):
         for k, v in self.headers.items():
             hdrs.setdefault(k, v)
 
-        status, uheaders, up_body = self._forward(optimized_body, hdrs)
-
-        # if we dropped tokens, echo a non-intrusive x-proxy header so the
-        # client can see the savings; never alter provider output
+        status, uheaders, up_body = None, None, None
+        is_stream = bool(req_body.get("stream", False))
+        fwd = self._forward(optimized_body, hdrs, stream=is_stream)
         saved = opt["stats"]["removed_approx_tokens"] + opt["stats"]["compressed_approx_tokens"]
+
+        if is_stream:
+            # SSE streaming passthrough — stream chunks as they arrive
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            if saved:
+                self.send_header("X-Token-Saver-Saved", str(saved))
+            self.end_headers()
+            for item in fwd:
+                if isinstance(item, bytes):
+                    self.wfile.write(item)
+                    self.wfile.flush()
+                # item may be (status, headers) tuple on first yield — skip write
+            return
+
+        # non-streaming: buffer + copy
+        status, uheaders, up_body = fwd
         if status == 200:
             self.send_response(status)
             self.send_header("Content-Type", uheaders.get("Content-Type", "application/json"))
@@ -113,7 +146,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(up_body)
         else:
-            # forward error body verbatim
             self._json({"error": "upstream_error", "status": status,
                         "detail": up_body[:200].decode("utf-8", "replace")}, status)
 

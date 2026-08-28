@@ -165,6 +165,29 @@ try:
         check(False, "non-chat 404 expected")
     except urllib.error.HTTPError as e:
         check(e.code == 404, f"non-chat -> 404 (got {e.code})")
+
+    # streaming request -> SSE streamed-back (content-type text/event-stream)
+    sess_stream = f"""
+import socket
+import urllib.request
+req = urllib.request.Request("http://127.0.0.1:{PROXY_PORT}/v1/chat/completions",
+    data='{{"model":"t","stream":true,"messages":[]}}'.encode(),
+    headers={{"Content-Type":"application/json","Authorization":"Bearer sk"}},
+    method="POST")
+try:
+    r = urllib.request.urlopen(req, timeout=8)
+    ct = r.headers.get("Content-Type","")
+    data = r.read()
+    print("CT=" + ct)
+    print("LEN=" + str(len(data)))
+except Exception as e:
+    print("ERR=" + str(e))
+"""
+    import subprocess, sys
+    pr = subprocess.run([sys.executable, "-c", sess_stream], capture_output=True, text=True, timeout=15)
+    out = pr.stdout
+    check("CT=text/event-stream" in out or "CT=text/event-stream; charset" in out,
+          f"streaming request -> SSE content-type (got {out.strip()[:80]})")
 finally:
     proc.kill()
 
