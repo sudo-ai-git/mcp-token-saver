@@ -59,20 +59,35 @@ memo engine that we run **only server-side**.
     keys, card-run digits). Accurate delta; method still server-side/opaque.
 - **Honest limit:** the scrubber is a *pattern* matcher, not semantic security.
   For a hard privacy guarantee use tier `hash` (sends no content at all).
-- **This repo ships the client + contract only.** Wiring the paid backend
-  engine is the gated service — the client documents exactly what may be sent
-  and what comes back, so the upsell is real and saleable without exposing the
-  crown jewel.
+- **This repo ships BOTH the client AND the deployable PRO backend**
+  (`pro_backend.py` → `mcp-token-saver-pro`). The backend runs the semantic
+  engine server-side, opaque, and returns only the savings number. The free
+  client talks to it over the documented contract. You deploy the backend on
+  infrastructure you control; it is the paid service.
 
 ## Run
 
 ```bash
-# stdio (default)
+# free client — stdio (default)
 python3 server.py
 
-# Streamable HTTP
+# free client — Streamable HTTP
 python3 server.py --http --port 9400
+
+# PRO backend (paid service — the semantic delta engine, server-side)
+MCP_TOKEN_SAVER_API_KEY="<your-key>" python3 pro_backend.py --port 9500
 ```
+
+The backend serves:
+- `GET /healthz` — liveness
+- `POST /assess` — accepts the de-identified rows (tier hash/content), Bearer-auth
+  gated (`MCP_TOKEN_SAVER_API_KEY`), returns the real/exposed delta + numbers only.
+
+> The `content` tier computes the semantic near-duplicate delta with the
+> internal engine **server-side**; the response contains only `exact_dedupe_savings`,
+> `semantic_additional_savings`, totals — never raw content and never any method
+> artifact (verified by a test that greps the response for gematria/base-6/vector
+> method markers and asserts none leak).
 
 ## Test evidence
 
