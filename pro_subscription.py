@@ -54,6 +54,33 @@ API_BASE = "https://api.nowpayments.io/v1"
 CREATE_PAYMENT_PATH = "/payment"
 PAYMENT_STATUS_PATH = "/payment/{payment_id}"
 
+# Secure credential store (0600, merchant-owned, never committed/logged).
+# Path mirrors the established .nowpayments_key layout in the revenue workdir,
+# overridable via env for tests.
+CRED_FILE = os.environ.get(
+    "NOWPAYMENTS_CRED_FILE", "~/.hermes/.nowpayments_key"
+).replace("~", os.path.expanduser("~"))
+
+
+def _load_nowpayments_creds(path: Optional[str] = None) -> Dict[str, str]:
+    """Read NowPayments API key + IPN secret from a 0600 env-style file.
+
+    Never logs or echoes the values. Returns {} if the file is missing.
+    """
+    p = path or CRED_FILE
+    out: Dict[str, str] = {}
+    if not os.path.exists(p):
+        return out
+    for line in open(p, "r", encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        k = k.strip().upper()
+        if k in ("NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"):
+            out[k] = v.strip()
+    return out
+
 # Payment statuses NowPayments reports (subset we act on)
 STATUS_WAITING = "waiting"
 STATUS_CONFIRMING = "confirming"
