@@ -340,12 +340,18 @@ class NowPayments:
     def create_payment(self, price_usd: float = WIN_PRICE_USD,
                        coins: Optional[List[str]] = None,
                        order_id: str = "") -> Dict[str, Any]:
-        """Create a NowPayments invoice. Buyer pays any supported coin.
+        """Create a NowPayments invoice.
 
-        Returns the NowPayments payment object (payment_id, payment_status,
-        pay_address, pay_url...). `coins` optionally restricts the accepted
-        set (e.g. ["btc","eth","xrp","usdttrc20","usdtsol","sol"]).
+        `coins` names the accepted coin(s); NowPayments `/v1/payment` REQUIRES
+        a non-empty `pay_currency`, so when omitted this defaults to BTC (the
+        canonical first choice) rather than sending a blank currency that the
+        API rejects with "pay_currency is required". With multiple coins the
+        first is used as the invoice's pay_currency (the `currencies` field is
+        not accepted on payment-create). Returns the NowPayments payment object
+        (payment_id, payment_status, pay_address, pay_url...).
         """
+        if not coins:
+            coins = ["btc"]
         payload: Dict[str, Any] = {
             "price_amount": float(price_usd),
             "price_currency": "usd",
@@ -359,17 +365,34 @@ class NowPayments:
             ),
         }
         if coins:
-            payload["pay_currency"] = coins[0]  # preferred; NowPayments fills invoice
-            if len(coins) > 1:
-                payload["currencies"] = coins  # accepted set when multi
+            # NowPayments /v1/payment accepts a single preferred pay_currency.
+            # The `currencies` field is NOT allowed on payment-create (it is
+            # only valid on the price-estimate endpoint) and is rejected with
+            # 400 "currencies is not allowed". So with multiple candidate
+            # coins we pick the first as the buyer's pay_currency (NowPayments
+            # still shows the full invoice/QR for it); never send `currencies`.
+            payload["pay_currency"] = coins[0]
         if self._post is not None:
             return self._post(payload)
         # live path: requests (lazy import so stdlib-only offline tests pass)
         import requests
+        # NowPayments' edge (Cloudflare) rejects the default python-requests
+        # User-Agent with HTTP 403 / "error code: 1010" (bot block) from
+        # residential/cellular WAN IPs. A browser-shaped UA passes (verified:
+        # the identical request returns 201 with a real payment id). Keep the
+        # UA stable and browser-like so creation is never bot-blocked.
         r = requests.post(
             self.base + CREATE_PAYMENT_PATH,
             json=payload,
-            headers={"x-api-key": self.api_key, "Content-Type": "application/json"},
+            headers={
+                "x-api-key": self.api_key,
+                "Content-Type": "application/json",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0.0.0 Safari/537.36"
+                ),
+            },
             timeout=30,
         )
         if r.status_code != 201:

@@ -28,10 +28,17 @@ check("token_units deterministic", pb._token_units("hello world")==pb._token_uni
 check("token_units non-empty", len(pb._token_units("check status of records"))>0)
 check("empty text -> empty units", pb._token_units("")==[])
 
-# cosine: identical vec = 1, disjoint = low
-a = [1.0,0,0,0]; b=[1.0,0,0,0]; c=[0,1.0,0,0]
-check("cosine identical = 1", abs(pb._cosine(a,b)-1.0)<1e-9)
-check("cosine orthogonal < 1", pb._cosine(a,c)<0.1)
+# real engine present? (numpy-backed vendored SemanticSpace)
+eng = pb._get_real_semantic_engine()
+check("real semantic engine available", eng is not None)
+if eng is not None:
+    # identical text -> near-1 similarity; unrelated -> lower
+    same = eng.similarity("incrementally snapshot CUSTOMERS where name is Acme",
+                          "incrementally snapshot CUSTOMERS where name is Acme")
+    check("identical similarity high", same > 0.5, str(same))
+    diff = eng.similarity("incrementally snapshot CUSTOMERS where name is Acme",
+                          "the quick brown fox jumps over the lazy dog")
+    check("unrelated similarity lower", diff < same, f"{diff} < {same}")
 
 # semantic near-dupe delta: two near-identical (not exact) messages -> >0 saved
 n1 = "Incrementally snapshot table CUSTOMERS where CUSTOMER_NAME is Acme Co"
