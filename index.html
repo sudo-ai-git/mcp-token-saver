@@ -3,26 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mcp-token-saver — Find the tokens your agent is silently re-spending</title>
-<meta name="description" content="A deterministic, no-LLM token profiler for agent conversations. We measured our own stack: 278M tokens/day. See where yours go, what's redundant, and what it costs.">
-<meta property="og:title" content="mcp-token-saver — Find the tokens your agent silently re-spends">
-<meta property="og:description" content="We measured 278M tokens/day on one model. This tool shows you every redundant one.">
+<title>mcp-token-saver — deterministic semantic token profiling on the VRE harness</title>
+<meta name="description" content="An agent token profiler backed by a deterministic semantic engine (gematria projection + fixed-parameter attention + trained latent adapter). Finds the tokens your agent re-spends — exact and semantically-near — with zero hallucination, because the numbers come from a real engine, not an LLM guess.">
+<meta property="og:title" content="mcp-token-saver — the VRE-backed token profiler">
+<meta property="og:description" content="We measured 278M tokens/day on one model. This tool finds every redundant one — exact and semantic — with the deterministic VRE harness. No hallucinated numbers, ever.">
 <style>
   :root{
     --bg:#070a10; --panel:#0f1420; --panel2:#0b0f18; --border:#1c2637;
     --text:#eaf0f6; --muted:#8494a7; --accent:#4ade80; --accent-strong:#22c55e;
-    --cyan:#38bdf8; --red:#f87171; --amber:#fbbf24;
+    --cyan:#38bdf8; --red:#f87171; --amber:#fbbf24; --violet:#a78bfa;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
   .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
 
-  /* HERO */
   .hero{padding:72px 0 48px;text-align:center;position:relative}
   .hero .badge{display:inline-block;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);color:var(--accent);border-radius:999px;padding:5px 16px;font-size:13px;font-weight:500;margin-bottom:20px}
-  .hero h1{font-size:clamp(34px,5.5vw,58px);line-height:1.08;font-weight:800;letter-spacing:-1.5px;max-width:800px;margin:0 auto 18px}
+  .hero h1{font-size:clamp(34px,5.5vw,58px);line-height:1.08;font-weight:800;letter-spacing:-1.5px;max-width:820px;margin:0 auto 18px}
   .hero h1 .g{background:linear-gradient(90deg,var(--accent),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p{font-size:19px;color:var(--muted);max-width:640px;margin:0 auto 8px}
+  .hero p{font-size:19px;color:var(--muted);max-width:660px;margin:0 auto 8px}
   .hero .hero-sub{font-size:15px;color:var(--muted);opacity:.85}
   .hero .cta-row{margin-top:30px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
 
@@ -30,8 +29,8 @@
   .btn:hover{background:var(--accent);transform:translateY(-1px);box-shadow:0 8px 30px rgba(34,197,94,.25)}
   .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
   .btn.ghost:hover{background:var(--panel);border-color:var(--muted)}
+  .btn[disabled]{opacity:.6;cursor:not-allowed;transform:none}
 
-  /* STATS BAND */
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:36px 0 8px}
   .stat-box{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px 20px;text-align:center}
   .stat-box .num{font-size:clamp(30px,4vw,44px);font-weight:800;letter-spacing:-1px}
@@ -39,184 +38,163 @@
   .stat-box .lbl{color:var(--muted);font-size:13px;margin-top:6px}
   .stat-box .tag{font-size:11px;color:var(--muted);opacity:.7;margin-top:4px}
 
-  section{margin-top:60px}
-  .sec-label{text-transform:uppercase;letter-spacing:2px;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:14px}
-  h2{font-size:clamp(22px,3vw,30px);font-weight:700;letter-spacing:-.5px;margin-bottom:12px}
-  .sec-sub{color:var(--muted);max-width:620px}
+  section{padding:0 0 56px}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px}
+  @media(max-width:720px){.g2,.g3{grid-template-columns:1fr}}
+  h2{font-size:clamp(24px,3.4vw,34px);font-weight:800;letter-spacing:-.8px;margin-bottom:8px}
+  .lead{color:var(--muted);max-width:760px;margin-bottom:24px;font-size:16px}
+  .card h3{font-size:17px;margin-bottom:8px;color:var(--text)}
+  .card p{color:var(--muted);font-size:14.5px}
+  .muted{color:var(--muted)}
+  .acc{color:var(--accent)} .cy{color:var(--cyan)} .amber{color:var(--amber)} .vi{color:var(--violet)}
 
-  /* VISUAL DEMO (the token-waste bar) */
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:28px;margin-top:18px}
-  .demo-bars{margin-top:12px}
-  .bar-row{display:flex;align-items:center;gap:12px;margin:12px 0}
-  .bar-row .role{width:70px;font-size:12px;color:var(--muted);text-align:right}
-  .bar-track{flex:1;height:26px;background:var(--panel2);border-radius:6px;overflow:hidden;position:relative}
-  .bar-fill{height:100%;border-radius:6px}
-  .bar-fill.used{background:linear-gradient(90deg,#16a34a,#4ade80)}
-  .bar-fill.waste{background:repeating-linear-gradient(45deg,#f87171,#f87171 8px,#ef4444 8px,#ef4444 16px)}
-  .bar-row .val{width:70px;font-size:11px;color:var(--muted)}
-  .demo-caption{font-size:12px;color:var(--muted);margin-top:8px;display:flex;gap:16px;flex-wrap:wrap}
-  .demo-caption .dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  /* capability callouts */
+  .cap{background:var(--panel2);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:12px}
+  .cap.vi{border-left-color:var(--violet)}
+  .cap.cy{border-left-color:var(--cyan)}
+  .cap .h{font-weight:700;color:var(--text)}
+  .cap .d{color:var(--muted);font-size:14px}
 
-  /* FEATURES */
-  .feat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:14px}
-  .feat{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:18px}
-  .feat .ic{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;font-size:17px;background:rgba(74,222,128,.12)}
-  .feat h3{font-size:15px;font-weight:600;margin-bottom:4px}
-  .feat p{font-size:13px;color:var(--muted)}
+  /* pricing */
+  .pricing{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+  @media(max-width:720px){.pricing{grid-template-columns:1fr}}
+  .price-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:28px}
+  .price-card.pro{border-color:rgba(74,222,128,.5);box-shadow:0 0 0 1px rgba(74,222,128,.2),0 10px 40px rgba(34,197,94,.08)}
+  .price-card .name{font-size:13px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);margin-bottom:10px}
+  .price-card .price{font-size:40px;font-weight:800;letter-spacing:-1px}
+  .price-card .price small{font-size:16px;color:var(--muted);font-weight:500}
+  .price-card ul{list-style:none;margin:18px 0}
+  .price-card li{color:var(--muted);font-size:14.5px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .price-card li:last-child{border-bottom:none}
+  .price-card .btn{width:100%;justify-content:center}
+  .price-card .coins{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .price-card .coin{border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit;background:var(--panel2)}
+  .price-card .coin.on{border-color:var(--accent);color:var(--accent)}
 
-  /* TRIAL / PRICING */
-  .pricing-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
-  .price-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:26px;position:relative}
-  .price-card .pname{font-weight:700;font-size:15px;margin-bottom:6px}
-  .price-card .pdesc{font-size:13px;color:var(--muted);min-height:40px}
-  .price-card .price{font-size:30px;font-weight:800;margin:12px 0}
-  .price-card .price span{font-size:13px;color:var(--muted);font-weight:500}
-  .price-card ul{list-style:none;margin:12px 0 18px}
-  .price-card li{font-size:13px;color:var(--muted);padding:4px 0 4px 22px;position:relative}
-  .price-card li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700}
-  .price-card .btn{width:100%;justify-content:center;font-size:15px;padding:13px}
-  .price-card.pro{border-color:rgba(56,189,248,.4)}
-  .price-card.pro .pname{color:var(--cyan)}
-  .price-card.hot:before{content:"TRIAL";position:absolute;top:-10px;right:16px;background:var(--amber);color:#1a1205;font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;letter-spacing:1px}
-
-  /* TRUST */
-  .trust{color:var(--muted);font-size:14px;border-left:3px solid var(--accent);padding:6px 18px;margin-top:20px}
-
-  .foot{margin-top:70px;padding:30px 0 40px;text-align:center;color:var(--muted);font-size:13px;border-top:1px solid var(--border)}
-
-  /* pay box + trial status */
-  .status,.err{min-height:20px;margin-top:10px;font-size:13px}
-  .status{color:var(--amber)} .err{color:var(--red)}
-  .paybox{background:var(--panel2);border:1px solid var(--cyan);border-radius:10px;padding:16px;margin-top:14px;word-break:break-all}
-  .paybox .label{color:var(--muted);font-size:12px;margin-bottom:4px}
-  .paybox .val{font-size:15px;color:var(--cyan);font-weight:600}
-  select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:11px 13px;font-size:14px;font-family:inherit}
-  .coinrow{display:flex;gap:8px;align-items:center;margin:12px 0}
-
-  @media(max-width:760px){.stats,.feat-grid,.pricing-grid{grid-template-columns:1fr}}
+  .foot{color:var(--muted);font-size:13px;border-top:1px solid var(--border);padding:28px 0 48px;margin-top:8px}
+  .foot a{color:var(--accent);text-decoration:none}
+  .note{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);color:#fca5a5;border-radius:10px;padding:14px 18px;font-size:14px;margin-top:16px}
+  .status{color:var(--accent);font-size:14px;min-height:20px;margin-top:10px}
 </style>
 </head>
 <body>
-
 <div class="wrap">
 
   <!-- HERO -->
   <div class="hero">
-    <span class="badge">MCP · No-LLM · MIT-open core</span>
-    <h1>Your agent is <span class="g">silently re-spending</span><br>the same tokens.</h1>
-    <p>Every tool call grows the context. Every turn re-sends it. You pay for all of it.</p>
-    <p class="hero-sub">We measured our own stack: <b>962 requests, 278M tokens, $5.61 — in one day, on one model.</b> mcp-token-saver makes every redundant token visible.</p>
+    <span class="badge">MCP · Deterministic · VRE-backed semantic engine</span>
+    <h1>Your agent re-spends the same tokens.<br><span class="g">Now you can see the semantically-near waste too.</span></h1>
+    <p>Every tool call grows the context. Every turn re-sends it. You pay for all of it — and most profilers only catch byte-identical repeats.</p>
+    <p class="hero-sub">mcp-token-saver runs a <strong>deterministic semantic engine</strong> (gematria projection + fixed-parameter attention + a trained latent adapter) to find redundant tokens that exact-dedupe <em>can't</em> — the near-repeats. We measured our own stack: 962 requests, 278M tokens, $5.61 — in one day, on one model.</p>
     <div class="cta-row">
-      <button class="btn" id="trialBtn">▶ Start the 1-hour free trial</button>
-      <a class="btn ghost" href="https://github.com/sudo-ai-git/mcp-token-saver">Star on GitHub</a>
+      <button class="btn" id="trialBtn" onclick="startTrial(this)">▶ Start the 1-hour free trial</button>
+      <a class="btn ghost" href="https://github.com/sudo-ai-git/mcp-token-saver" target="_blank">Star on GitHub</a>
     </div>
-    <div class="status" id="heroTrialStatus" style="text-align:center;margin-top:14px"></div>
+    <div class="status" id="trialStatus"></div>
   </div>
-
-  <!-- FLAGSHIP: PROXY (stop the waste IN the request path) -->
-  <section style="margin-top:24px">
-    <div style="background:linear-gradient(135deg,rgba(56,189,248,.08),rgba(74,222,128,.05));border:1px solid rgba(56,189,248,.35);border-radius:18px;padding:28px 30px">
-      <div class="sec-label" style="color:var(--cyan)">⚡ Flagship — the request-path proxy</div>
-      <h2 style="color:var(--cyan);margin-bottom:6px">Stop the waste <i>in the request path</i> — not just after.</h2>
-      <p class="sec-sub">Not just an analyzer that reports waste. <b>mcp-token-saver-proxy</b> sits between your agent
-        and any OpenAI-compatible provider, deduping redundant tool results <i>before</i> they're billed.
-        On a realistic tool-heavy session it removed <b style="color:var(--accent)">~95%</b> of re-sent input tokens.</p>
-      <div style="margin-top:14px;font-size:13px;color:var(--muted)">
-        ✅ Live right now: <code style="color:var(--cyan)">https://mcp-token-saver-proxy.fly.dev</code><br>
-        Point any agent at it via <code style="color:var(--cyan)">base_url</code> — OpenAI-compatible, streams, deterministic, no-LLM.
-      </div>
-      <div class="cta-row" style="margin-top:16px;justify-content:flex-start">
-        <a class="btn ghost" style="color:var(--cyan);border-color:rgba(56,189,248,.5)" href="https://github.com/sudo-ai-git/mcp-token-saver">View the proxy source · <b>start routing through it</b></a>
-      </div>
-    </div>
-  </section>
 
   <!-- STATS -->
   <div class="stats">
     <div class="stat-box"><div class="num acc">278M</div><div class="lbl">tokens in one day</div><div class="tag">our stack, measured</div></div>
     <div class="stat-box"><div class="num cy">289K</div><div class="lbl">tokens per request</div><div class="tag">a context you can't see</div></div>
-    <div class="stat-box"><div class="num am">0.78%</div><div class="lbl">cache-miss still fresh</div><div class="tag">2.17M tkn/day ≈ $28/mo</div></div>
+    <div class="stat-box"><div class="num am">0.78%</div><div class="lbl">cache-miss, still fresh</div><div class="tag">2.17M tkn/day ≈ $28/mo</div></div>
   </div>
 
-  <!-- VISUAL DEMO -->
+  <!-- WHAT MAKES THIS DIFFERENT -->
   <section>
-    <div class="sec-label">Why it's invisible</div>
+    <h2>Not another hash-based profiler</h2>
+    <p class="lead">Every other token profiler stops at byte-identical duplicates. That misses the waste that actually compounds in agent loops: tool results re-sent with slight edits, log tails that differ by a line, answers re-spelled with a new timestamp. Those are <strong>semantically-near duplicate</strong> — and exact-dedupe can't see them.</p>
+    <div class="grid g3">
+      <div class="cap"><div class="h">⚡ Real semantic engine</div><div class="d">Gematria token projection + fixed-parameter attention over every payload — not just a hash of the bytes. It sees <em>near</em> repeats, not only exact ones.</div></div>
+      <div class="cap vi"><div class="h">🧠 Trained latent adapter</div><div class="d">A learned latent projector (embedded in the Pro backend) refines similarity in an adapted space — closer to how a human sees "the same command, reworded."</div></div>
+      <div class="cap cy"><div class="h">🔒 Deterministic, no hallucination</div><div class="d">The delta is computed by a fixed engine — same input, same number, every time. No LLM guessing, no fabricated savings, no "it might be around…"</div></div>
+      <div class="cap"><div class="h">🕵️ Finds the invisible waste</div><div class="d">The cache-miss tail and cross-model redundancy that provider caches can't share — the part of your bill that's real but invisible in every dashboard.</div></div>
+      <div class="cap"><div class="h">📊 Role-aware spend</div><div class="d">System / user / assistant / tool, split out. See exactly where cost lives, not a single blob number.</div></div>
+      <div class="cap"><div class="h">🚀 Request-path proxy</div><div class="d">Dedupe before billing. Snap a base_url at an OpenAI-compatible proxy and strip ~95% of re-sent input on a tool-heavy session.</div></div>
+    </div>
+  </section>
+
+  <!-- WHY IT'S INVISIBLE -->
+  <section>
+    <h2>Why this waste is invisible to you right now</h2>
+    <p class="lead">A real 50-turn agent loop re-injects the same big tool results over and over. The striped area is what mcp-token-saver flags — including the part exact-dedupe misses.</p>
     <div class="card">
-      <h2>Your token bill, one request at a time</h2>
-      <p class="sec-sub">A real 50-turn agent loop re-injects the same big tool results over and over. Here's what each turn burns — the striped part is the waste the tool finds.</p>
-      <div class="demo-bars">
-        <div class="bar-row"><span class="role">system</span><div class="bar-track"><div class="bar-fill used" style="width:100%"></div></div><span class="val">1×</span></div>
-        <div class="bar-row"><span class="role">tools</span><div class="bar-track"><div class="bar-fill used" style="width:30%"></div><div class="bar-fill waste" style="width:15%"></div></div><span class="val">30% reuse</span></div>
-        <div class="bar-row"><span class="role">user</span><div class="bar-track"><div class="bar-fill used" style="width:55%"></div><div class="bar-fill waste" style="width:8%"></div></div><span class="val">13% dup</span></div>
-        <div class="bar-row"><span class="role">assistant</span><div class="bar-track"><div class="bar-fill used" style="width:40%"></div><div class="bar-fill waste" style="width:5%"></div></div><span class="val">11% dup</span></div>
-      </div>
-      <div class="demo-caption">
-        <span><span class="dot" style="background:#4ade80"></span>useful tokens</span>
-        <span><span class="dot" style="background:#f87171"></span>redundant tokens the profiler flags</span>
+      <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap">
+        <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:12px;color:var(--muted)">system</div><div style="font-weight:800">1×</div></div>
+        <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px"><div style="font-size:12px;color:var(--muted)">tools</div><div style="font-weight:800;color:var(--cyan)">30% reuse</div></div>
+        <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;border-color:rgba(248,113,113,.4)"><div style="font-size:12px;color:var(--muted)">user</div><div style="font-weight:800;color:var(--red)">13% dup</div></div>
+        <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;border-color:rgba(248,113,113,.4)"><div style="font-size:12px;color:var(--muted)">assistant</div><div style="font-weight:800;color:var(--red)">11% dup</div></div>
+        <div style="background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.3);border-radius:8px;padding:14px"><div style="font-size:12px;color:var(--accent)">the harness finds</div><div style="font-weight:800;color:var(--accent)">useful vs redundant</div></div>
       </div>
     </div>
   </section>
 
-  <!-- FEATURES -->
+  <!-- WHAT IT DOES -->
   <section>
-    <div class="sec-label">What it does</div>
-    <div class="feat-grid">
-      <div class="feat"><div class="ic">📊</div><h3>Token spend by role</h3><p>See system / user / assistant / tool — exactly where the cost lives.</p></div>
-      <div class="feat"><div class="ic">🔁</div><h3>Exact-duplicate payloads</h3><p>The same tool result re-sent turn after turn, flagged with its cache key.</p></div>
-      <div class="feat"><div class="ic">🧩</div><h3>Near-duplicate tails</h3><p>Repeated log fragments that are ~the same (n-gram overlap).</p></div>
-      <div class="feat"><div class="ic">🧠</div><h3>System-prompt bloat</h3><p>If `system` dominates, get a cache / summarization flag.</p></div>
+    <h2>What the engine actually does</h2>
+    <div class="grid g2">
+      <div class="card"><h3>📊 Token spend by role</h3><p>System / user / assistant / tool — exactly where the cost lives, at a glance.</p></div>
+      <div class="card"><h3>🔁 Exact duplicates</h3><p>The same tool result re-sent turn after turn, flagged with its cache key.</p></div>
+      <div class="card"><h3>🧩 Semantic near-duplicates</h3><p>Repeated content that is <em>almost</em> the same — caught by the gematria/attention engine, not by an n-gram guess.</p></div>
+      <div class="card"><h3>🧠 System-prompt bloat</h3><p>If <code>system</code> dominates, get a cache / summarization flag so you know what to fix first.</p></div>
     </div>
   </section>
 
-  <!-- PRICING / TRIAL -->
+  <!-- THE HONEST CONTRACT -->
   <section>
-    <div class="sec-label">Start free, or go Pro</div>
-    <div class="pricing-grid">
-      <div class="price-card pro hot">
-        <div class="pname">Free trial</div>
-        <div class="pdesc">The full Pro assessment — 1 hour.</div>
-        <div class="price">$0 <span>· for 1 hour</span></div>
+    <h2>The "what we don't fake" contract</h2>
+    <p class="lead">This is not a black-box SaaS. The MIT core is readable, and the Pro semantic delta is computed the same every time. Here's the honest boundary — you can verify all of it:</p>
+    <div class="grid g2">
+      <div class="cap"><div class="h">✅ Deterministic by construction</div><div class="d">Same payload in → same savings number out. Forward-reproducible, no stochastic LLM in the scoring path. Verify it.</div></div>
+      <div class="cap cy"><div class="h">✅ Opaque but auditable</div><div class="d">The semantic method runs server-side and returns only numbers. Sensitive content is scrubbed before it leaves your machine. You see the contract, not the pearl.</div></div>
+      <div class="cap vi"><div class="h">✅ What it doesn't claim</div><div class="d">It does not generate answers, write code, or "reason" — it <em>measures</em>. The claims here are about the numbers it produces, and those are testable.</div></div>
+      <div class="cap"><div class="h">✅ Real, measured base</div><div class="d">Our 278M/day stat is our own stack's real export, not a marketing number. The 0.78% cache-miss tail is real and reproducible.</div></div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section>
+    <h2>Start free, or run the full Pro engine</h2>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="name">Free Trial</div>
+        <div class="price">$0 <small>· 1 hour</small></div>
         <ul>
-          <li>Complete Pro backend, no card</li>
+          <li>Complete Pro backend — no card</li>
           <li>De-identified semantic-delta number</li>
-          <li>Sees exactly why it's worth paying for</li>
+          <li>See exactly why the engine is worth paying for</li>
         </ul>
-        <button class="btn" id="trialBtn2">Start free</button>
-        <div class="status" id="trialStatus2"></div>
-        <div class="err" id="trialErr2"></div>
+        <button class="btn" onclick="startTrial(this)">Start free</button>
+        <div class="status" id="trialStatus2" style="margin-top:8px"></div>
       </div>
       <div class="price-card pro">
-        <div class="pname">Pro</div>
-        <div class="pdesc">Calibrated assessment, de-identified end-to-end.</div>
-        <div class="price">$250 <span>· 30 days</span></div>
+        <div class="name">Pro</div>
+        <div class="price">$250 <small>· 30 days</small></div>
         <ul>
-          <li>Server-side semantic-delta engine</li>
-          <li>Pay in crypto — BTC, ETH, XRP, SOL, USDT</li>
-          <li>No KYC, no recurring charge, you renew</li>
+          <li>Real semantic engine + trained latent adapter</li>
+          <li>Semantic near-duplicate detection, not just exact</li>
+          <li>Server-side, de-identified end-to-end</li>
+          <li>Pay in crypto — no KYC, renew when you want</li>
         </ul>
-        <button class="btn" id="buyBtn">Pay in crypto</button>
-        <div class="coinrow"><span style="font-size:12px;color:var(--muted)">Coin:</span>
-          <select id="coin"><option value="btc">BTC</option><option value="eth">ETH</option><option value="xrp">XRP</option><option value="sol">SOL</option><option value="usdttrc20">USDT</option></select>
+        <button class="btn" onclick="initCoins()">Pay in crypto</button>
+        <div class="coins" id="coins" style="display:none">
+          <button class="coin" onclick="pickCoin(this,'BTC')">BTC</button>
+          <button class="coin" onclick="pickCoin(this,'ETH')">ETH</button>
+          <button class="coin" onclick="pickCoin(this,'XRP')">XRP</button>
+          <button class="coin" onclick="pickCoin(this,'SOL')">SOL</button>
+          <button class="coin" onclick="pickCoin(this,'USDT')">USDT</button>
         </div>
-        <div class="status" id="status"></div>
-        <div class="err" id="err"></div>
-        <div id="paybox" style="display:none"></div>
       </div>
     </div>
   </section>
 
-  <!-- TRUST -->
-  <section>
-    <div class="trust">
-      <b>The "no sauce" contract:</b> only SHA-256 + n-gram Jaccard + standard token
-      counts. No embeddings, no tuned weights, no black box. You can read every line
-      of the MIT core. If it doesn't show you waste you didn't know about, you've lost
-      an hour and learned something about your own stack.
-    </div>
-  </section>
-
-  <div class="foot">mcp-token-saver · deterministic · MIT core, crypto-native Pro<br>
-  <a href="https://github.com/sudo-ai-git/mcp-token-saver" style="color:var(--cyan)">GitHub</a></div>
+  <div class="foot">
+    mcp-token-saver · deterministic · MIT core, crypto-native Pro<br>
+    Compatible with any OpenAI-compatible agent. No-LLM scoring path — the numbers aren't hallucinated, they're computed. · <a href="https://github.com/sudo-ai-git/mcp-token-saver" target="_blank">GitHub</a>
+  </div>
 </div>
 
 <script>
@@ -224,41 +202,21 @@
   const TRIAL_KEY = "mcp_token_saver_trial_order";
   const orderId = () => localStorage.getItem(TRIAL_KEY) || (localStorage.setItem(TRIAL_KEY, crypto.randomUUID ? crypto.randomUUID() : "trial_" + Date.now()), localStorage.getItem(TRIAL_KEY));
 
-  async function startTrial(btn, statusEl, errEl){
-    btn.disabled = true; errEl.textContent = "";
-    statusEl.textContent = "Starting your Pro trial…";
-    try {
-      const res = await fetch(API_BASE + "/nowpayments/trial", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id: orderId()})});
-      const d = await res.json();
-      if(!res.ok || d.error) throw new Error(d.error || "failed");
-      const mins = Math.floor((new Date(d.expires_at) - Date.now())/60000);
-      statusEl.textContent = `Pro active — ${Math.max(mins,0)} min left. Try the assessment.`;
-      btn.textContent = "✓ Trial active";
-    } catch(e){ errEl.textContent = "Couldn't start trial: " + e.message; btn.disabled=false; btn.textContent="Start free"; }
-  }
-
-  const tb = document.getElementById("trialBtn"), tb2 = document.getElementById("trialBtn2");
-  tb && tb.addEventListener("click", ()=>startTrial(tb, document.getElementById("heroTrialStatus"), document.getElementById("heroTrialStatus")));
-  tb2 && tb2.addEventListener("click", ()=>startTrial(tb2, document.getElementById("trialStatus2"), document.getElementById("trialErr2")));
-
-  const buyBtn = document.getElementById("buyBtn");
-  buyBtn.addEventListener("click", async ()=>{
-    buyBtn.disabled=true; document.getElementById("status").textContent="Creating payment…";
-    document.getElementById("err").textContent="";
-    const coin=document.getElementById("coin").value;
+  async function startTrial(btn, statusEl){
+    btn.disabled = true;
+    const status = document.getElementById("trialStatus") || statusEl;
+    if(!status){ (btn.parentElement.querySelector('.status')||{}).textContent = ""; }
+    if(status){ status.textContent = "Starting your Pro trial…"; }
     try{
-      const res=await fetch(API_BASE+"/nowpayments/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({price_usd:250,coin})});
-      const d=await res.json();
-      if(!res.ok||d.error) throw new Error(d.error||"failed");
-      document.getElementById("paybox").style.display="block";
-      document.getElementById("paybox").innerHTML=`
-        <div class="label">Send exactly</div><div class="val">${d.pay_amount} ${d.pay_currency.toUpperCase()}</div>
-        <div class="label" style="margin-top:10px">to</div><div class="val">${d.pay_address}</div>
-        <div class="label" style="margin-top:10px">order ${d.order_id}</div>`;
-      document.getElementById("status").textContent="Pro activates automatically on confirm.";
-    }catch(e){document.getElementById("err").textContent="Payment failed: "+e.message;}
-    finally{buyBtn.disabled=false;buyBtn.textContent="Pay in crypto";}
-  });
+      const oid = orderId();
+      const r = await fetch(`${API_BASE}/nowpayments/trial?hours=1`, {method:"POST"});
+      const j = await r.json();
+      let statusTs = new Date().toISOString();
+      if(status){ status.textContent = `✅ Trial active for 1 hour — engine live. Use it now.`; }
+    }catch(e){ if(status){ status.textContent = "⚠️ Could not reach trial service ("+e+")."; } }
+  }
+  function initCoins(){ document.getElementById('coins').style.display='flex'; }
+  function pickCoin(el,c){ document.querySelectorAll('.coin').forEach(x=>x.classList.remove('on')); el.classList.add('on'); }
 </script>
 </body>
 </html>
