@@ -1,0 +1,35 @@
+name: nowpayments-pro-activations
+
+on:
+  schedule:
+    # every 5 minutes: poll NowPayments for confirmed/finished Pro payments
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}  # allow manual run
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to commit the ledger back to the repo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run NowPayments poller
+        env:
+          NOWPAYMENTS_API_KEY: ${{ secrets.NOWPAYMENTS_API_KEY }}
+          NOWPAYMENTS_PUBLIC_KEY: ${{ secrets.NOWPAYMENTS_PUBLIC_KEY }}
+          LEDGER_OUT: .
+        run: |
+          python3 nowpayments_poll_activation.py
+
+      - name: Commit updated entitlement ledger
+        run: |
+          git config user.name "sudo-ai-git"
+          git config user.email "sudo-ai-git@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore(pro): update entitlement ledger [skip ci]"
+          git push
