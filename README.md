@@ -1,8 +1,21 @@
 # mcp-token-saver
 
-> **Deterministic, no-LLM token-usage profiler for agent conversations.** See
-> exactly where your tokens go per role, find the exact + near-duplicate
-> payloads inflating every request, and get one number you can act on.
+> **Request-path token proxy + deterministic analyzer for agent conversations.**
+> Stop paying for redundant tokens — proven live.
+
+**⚡ FLAGSHIP — the request-path proxy (live):**
+`mcp-token-saver-proxy` sits between your agent and any OpenAI-compatible
+provider, deduping redundant tool results **before** they're billed. Streaming,
+deterministic, no-LLM. Point any agent at it via `base_url`:
+
+```
+https://mcp-token-saver-proxy.fly.dev
+```
+
+**Live proof (not a benchmark):** a tool-heavy request routed through the proxy
+to DeepSeek removed **416 of 562 input tokens — 74%** of what you'd be billed
+for (measured via the `X-Token-Saver-Saved` header on a real, completed
+inference). See `show_savings.py` to reproduce.
 
 **🪙 Try Pro (1-hour trial) / Go Pro (crypto):** [product page](https://sudo-ai-git.github.io/mcp-token-saver/)
 
@@ -10,7 +23,7 @@ mcp-name: io.github.sudo-ai-git/mcp-token-saver
 
 ---
 
-## The number you can't see is the one that's costing you
+## The analyzer — the number you can't see is the one that's costing you
 
 A single agent day on one model — measured from our own stack:
 
