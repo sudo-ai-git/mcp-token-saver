@@ -136,13 +136,31 @@ class NowPaymentsWebhookHandler(BaseHTTPRequestHandler):
             self._send({"order_id": order_id, "entitled": ent.is_valid(),
                         "expires_at": ent.expires_at.isoformat()})
             return
+        if self.path.startswith("/nowpayments/customers"):
+            # Operator-only customer list for tracking (GitHub Actions pulls
+            # this). Auth = the NOWPAYMENTS_API_KEY held by the operator; not
+            # exposed to end users.
+            expected = os.environ.get("NOWPAYMENTS_API_KEY", "")
+            auth = self.headers.get("Authorization", "")
+            if not expected or auth != f"Bearer {expected}":
+                self._send({"error": "unauthorized"}, 401)
+                return
+            store = self._get_store()
+            self._send({"customers": store.customers(),
+                        "count": len(store.customers())})
+            return
         self._send({"error": "not_found"}, 404)
 
     def _handle_trial(self) -> None:
         """POST /nowpayments/trial — issue a 1-hour Pro trial entitlement.
 
-        Body (JSON) may set {order_id}. Returns the trial entitlement + expiry.
-        Idempotent per order_id (existing entitlement -> reported, not re-minted).
+        Body (JSON) may set {order_id}. Anti-farming: requires a `hwid` header;
+        a hardware id that already used its trial is REFUSED a second one (the
+        local package derives a stable hwid from the machine, so incognito /
+        fresh-browser / re-curl cannot mint unlimited free hours). If the hwid
+        is missing/too-short, trial is rejected (defense-in-depth: the client
+        must present a real machine identifier). Idempotent per order_id ONLY
+        while that order's entitlement is still valid.
         """
         length = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(length).decode("utf-8", "replace") if length else "{}"
@@ -151,15 +169,38 @@ class NowPaymentsWebhookHandler(BaseHTTPRequestHandler):
         except Exception:
             req = {}
         order = req.get("order_id") or f"trial_{int(__import__('time').time()*1000)}"
+        hwid = self.headers.get("X-HWID", "") or req.get("hwid", "")
         store = self._get_store()
+
+        # Anti-farming: a valid HWID is REQUIRED to get a free trial.
+        if not hwid or len(hwid.strip()) < 8 or hwid.lower() in ("unknown","null","none","undefined"):
+            self._send({"error": "hwid_required",
+                        "detail": "a valid X-HWID is required to start a trial"}, 428)
+            return
+
         ent = store.get(order)
         if ent is not None:
+            # Fix: an EXPIRED trial is NOT valid — reject, don't re-grant.
+            if not ent.is_valid():
+                self._send({"error": "trial_expired", "order_id": order,
+                            "detail": "this entitlement has expired; subscribe to continue"}, 402)
+                return
+            # still valid: record the hwid that re-presented it
+            store.record_hwid(hwid, order, kind="trial")
             self._send({"order_id": order, "entitled": True,
                         "kind": ent.kind, "expires_at": ent.expires_at.isoformat(),
                         "already_has": True})
             return
+
+        # Anti-farming: this hardware already used its free trial -> refuse.
+        if store.trial_already_used(hwid) and not store.hwid_subscribed(hwid):
+            self._send({"error": "trial_already_used", "hwid": hwid,
+                        "detail": "this device already used its free trial; subscribe to continue"}, 402)
+            return
+
         try:
             trial = ps.issue_trial(store, order)
+            store.record_hwid(hwid, order, kind="trial")
         except ps.DuplicateWebhookError:
             self._send({"order_id": order, "entitled": True, "kind": "trial",
                         "note": "already active"}, 200)

@@ -269,10 +269,13 @@ def issue_trial(store: "ProSubStore", order_id: str,
 
 @dataclass
 class ProSubStore:
-    """In-memory + ledger-backed mapping of order_id -> Entitlement."""
+    """In-memory + ledger-backed mapping of order_id -> Entitlement,
+    plus an HWID index for anti-trial-farming and customer tracking."""
 
     ledger: SubscriptionLedger = field(default_factory=SubscriptionLedger)
     _entitlements: Dict[str, Entitlement] = field(default_factory=dict)
+    # hwid -> {"trial_used": bool, "order_ids": [..]}  (persisted in ledger)
+    hwids: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def _reload(self) -> None:
         for rec in self.ledger.read():
@@ -292,6 +295,13 @@ class ProSubStore:
                     )
                 except Exception:
                     continue
+            elif rec.get("kind") == "hwid" and rec.get("hwid"):
+                self.hwids[rec["hwid"]] = {
+                    "trial_used": bool(rec.get("trial_used", False)),
+                    "order_ids": rec.get("order_ids", []),
+                    "subscribed": bool(rec.get("subscribed", False)),
+                    "first_seen": rec.get("first_seen", ""),
+                }
 
     def activate(self, ent: Entitlement) -> Entitlement:
         self.ledger.append({
@@ -317,6 +327,50 @@ class ProSubStore:
     def is_entitled(self, order_id: str, now: Optional[datetime] = None) -> bool:
         e = self.get(order_id)
         return bool(e and e.is_valid(now))
+
+    # ------------------------------------------------------------------ #
+    # HWID index (anti-trial-farming + customer tracking)
+    # ------------------------------------------------------------------ #
+    def record_hwid(self, hwid: str, order_id: str = "", kind: str = "trial") -> None:
+        """Record that this hardware id touched the service. Persists to the
+        hash-chained ledger. Refuses empty/fake hwids so a farmer can't bypass
+        with a blank header."""
+        hwid = (hwid or "").strip()
+        if not hwid or len(hwid) < 8 or hwid.lower() in ("unknown", "null", "none", "undefined"):
+            return
+        rec = dict(self.hwids.get(hwid, {
+            "trial_used": False, "order_ids": [], "subscribed": False, "first_seen": ""}))
+        if not rec["first_seen"]:
+            rec["first_seen"] = datetime.now(timezone.utc).isoformat()
+        if kind == "trial":
+            rec["trial_used"] = True
+        elif kind == "payment":
+            rec["subscribed"] = True
+        if order_id and order_id not in rec["order_ids"]:
+            rec["order_ids"].append(order_id)
+        self.hwids[hwid] = rec
+        self.ledger.append({
+            "kind": "hwid", "hwid": hwid, "trial_used": rec["trial_used"],
+            "subscribed": rec["subscribed"], "order_ids": rec["order_ids"],
+            "first_seen": rec["first_seen"],
+        })
+
+    def trial_already_used(self, hwid: str) -> bool:
+        hwid = (hwid or "").strip()
+        return bool(hwid) and bool(self.hwids.get(hwid, {}).get("trial_used"))
+
+    def hwid_subscribed(self, hwid: str) -> bool:
+        hwid = (hwid or "").strip()
+        if not hwid:
+            return False
+        return bool(self.hwids.get(hwid, {}).get("subscribed"))
+
+    def customers(self) -> list:
+        """Customer list (hwid, trial status, order ids, subscribed) for tracking."""
+        out = []
+        for hwid, rec in self.hwids.items():
+            out.append({"hwid": hwid, **rec})
+        return out
 
 
 # ---------------------------------------------------------------------------
