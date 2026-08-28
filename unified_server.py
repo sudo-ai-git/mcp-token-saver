@@ -24,6 +24,15 @@ from nowpayments_webhook import NowPaymentsWebhookHandler
 class UnifiedHandler(NowPaymentsWebhookHandler):
     server_version = "mcp-token-saver-pro-unified/1.0"
 
+    def send_response(self, code, message=None):
+        # Inject CORS headers into EVERY response (before send_header calls),
+        # so the actual POST responses also carry Access-Control-* — required
+        # for browser fetches from the github.io landing page.
+        super().send_response(code, message)
+        origin = self.headers.get("Origin", "")
+        self.send_header("Access-Control-Allow-Origin", origin or "*")
+        self.send_header("Vary", "Origin")
+
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/healthz" or path == "/pro/healthz":
@@ -48,6 +57,21 @@ class UnifiedHandler(NowPaymentsWebhookHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self) -> None:
+        """CORS preflight. The landing page is on sudo-ai-git.github.io but the
+        API is on mcp-token-saver-pro.fly.dev, so the browser sends an OPTIONS
+        preflight (with Origin + Access-Control-Request-*) before the real
+        POST. Without these CORS headers the browser blocks the fetch with
+        'TypeError: Failed to fetch'. We must answer the preflight 204 with the
+        allowed origin/methods/headers. (send_response already adds
+        Access-Control-Allow-Origin.)"""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-HWID, X-Order-Id, Authorization")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _handle_assess(self) -> None:
         """Pro assessment route — fail-closed gate via pro_backend._require_auth."""
