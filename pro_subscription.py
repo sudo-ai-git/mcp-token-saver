@@ -63,12 +63,20 @@ CRED_FILE = os.environ.get(
 
 
 def _load_nowpayments_creds(path: Optional[str] = None) -> Dict[str, str]:
-    """Read NowPayments API key + IPN secret from a 0600 env-style file.
+    """Read NowPayments API key + IPN secret.
 
-    Never logs or echoes the values. Returns {} if the file is missing.
+    Priority: environment vars first (NOWPAYMENTS_API_KEY / NOWPAYMENTS_IPN_SECRET —
+    this is how Fly.io `secrets set` injects them), then a 0600 env-style file
+    (path or CRED_FILE). Never logs or echoes the values. Returns {} if absent.
     """
-    p = path or CRED_FILE
     out: Dict[str, str] = {}
+    for k in ("NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"):
+        v = os.environ.get(k, "").strip()
+        if v:
+            out[k] = v
+    if out.get("NOWPAYMENTS_API_KEY") and out.get("NOWPAYMENTS_IPN_SECRET"):
+        return out
+    p = path or CRED_FILE
     if not os.path.exists(p):
         return out
     for line in open(p, "r", encoding="utf-8"):
@@ -77,7 +85,7 @@ def _load_nowpayments_creds(path: Optional[str] = None) -> Dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip().upper()
-        if k in ("NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET"):
+        if k in ("NOWPAYMENTS_API_KEY", "NOWPAYMENTS_IPN_SECRET") and not out.get(k):
             out[k] = v.strip()
     return out
 
@@ -204,6 +212,7 @@ class Entitlement:
     issued_at: datetime
     expires_at: datetime
     active: bool = True
+    kind: str = "paid"  # "paid" | "trial"
 
     def is_valid(self, now: Optional[datetime] = None) -> bool:
         now = now or datetime.now(timezone.utc)
@@ -221,7 +230,41 @@ class Entitlement:
             "issued_at": self.issued_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
             "active": self.active,
+            "kind": self.kind,
         }
+
+
+TRIAL_LIFETIME_DAYS = 7  # back-compat const
+TRIAL_LIFETIME_HOURS = 1  # the shipped trial: 1 hour — long enough to run the
+                          # optimizer and SEE the token-savings delta, short
+                          # enough to force action. A deterministic tool shows
+                          # its number in seconds; 1 hour is a sharp demo window.
+
+
+
+def issue_trial(store: "ProSubStore", order_id: str,
+                hours: int = TRIAL_LIFETIME_HOURS,
+                days: Optional[int] = None) -> Entitlement:
+    """Issue a free TIME-BASED trial entitlement (deterministic, no billing).
+
+    Default 1 hour — proves the savings instantly (run the optimizer, see the
+    delta). One per order_id (idempotent — duplicate trial rejected).
+    If `days` is passed (back-compat) it overrides hours.
+    """
+    if store.get(order_id) is not None:
+        raise DuplicateWebhookError(f"order {order_id} already has an entitlement (paid or trial)")
+    now = datetime.now(timezone.utc)
+    if days is not None:
+        ext = timedelta(days=days)
+    else:
+        ext = timedelta(hours=hours)
+    ent = Entitlement(
+        token_id=hashlib.sha256(f"trial:{order_id}".encode()).hexdigest()[:16],
+        order_id=order_id, payment_id=f"trial:{order_id}",
+        amount=0.0, currency="trial",
+        issued_at=now, expires_at=now + ext,
+        kind="trial")
+    return store.activate(ent)
 
 
 @dataclass
