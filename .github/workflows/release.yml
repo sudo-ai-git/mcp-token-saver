@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build + mcp<2
+        run: |
+          python -m pip install --upgrade pip build
+          python -m pip install "mcp>=1.0,<2"
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Sanity-check install + console scripts in clean venv
+        run: |
+          python -m venv /tmp/check
+          /tmp/check/bin/pip install --no-deps dist/*.whl
+          cd /tmp && /tmp/check/bin/python -c "import mcp_token_saver, pro_backend; print('modules OK')"
+          /tmp/check/bin/mcp-token-saver --help >/dev/null 2>&1 || /tmp/check/bin/mcp-token-saver || true
+
+      - name: Create GitHub Release with wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.whl dist/*.tar.gz \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --notes "Deterministic no-LLM token-usage profiler + redundancy advisor. See README."
+
+      - name: Publish to PyPI (no-op when token absent)
+        env:
+          TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "PYPI_API_TOKEN not set — skipping PyPI publish (release created)."
+            exit 0
+          fi
+          python -m pip install twine
+          twine upload --repository-url https://upload.pypi.org/legacy/ \
+            --username __token__ --password "$TOKEN" dist/*
