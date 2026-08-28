@@ -64,7 +64,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _forward(self, body: Dict[str, Any], headers: Dict[str, str],
                  stream: bool = False):
         """Forward to upstream. If stream=True, yields (status, header_dict, chunk_bytes)
-        as chunks arrive (SSE passthrough). Else returns (status, headers, bytes)."""
+        as chunks arrive (SSE passthrough). Else returns (status, headers, bytes).
+        Network errors (URLError/Timeout) are returned as a clean 502, never crashed.
+        """
         upstream = os.environ.get("UPSTREAM_BASE_URL", "https://api.openai.com/v1")
         req_headers = {k: v for k, v in headers.items()
                        if k.lower() in ("authorization", "content-type", "x-api-key", "accept")
@@ -78,6 +80,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     return resp.status, resp.headers, resp.read()
             except urllib.error.HTTPError as e:
                 return e.code, e.headers, e.read()
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                return 502, {}, json.dumps({"error": "upstream_unreachable",
+                                            "detail": str(e)[:120]}).encode()
         # STREAMING: stream chunks back as they arrive (SSE passthrough)
         def gen():
             try:
@@ -90,6 +95,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     yield chunk
             except urllib.error.HTTPError as e:
                 yield e.code, e.read()
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                yield 502, json.dumps({"error": "upstream_unreachable",
+                                       "detail": str(e)[:120]}).encode()
         return gen()
 
     # -- main ------------------------------------------------------------
@@ -121,18 +129,37 @@ class ProxyHandler(BaseHTTPRequestHandler):
         saved = opt["stats"]["removed_approx_tokens"] + opt["stats"]["compressed_approx_tokens"]
 
         if is_stream:
-            # SSE streaming passthrough — stream chunks as they arrive
+            # SSE streaming passthrough — send headers FIRST, resolve the leading
+            # (status, headers) tuple, then stream bytes. If upstream errors
+            # mid-stream, emit it as an SSE error event (never silently cut).
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("X-Accel-Buffering", "no")
             if saved:
                 self.send_header("X-Token-Saver-Saved", str(saved))
             self.end_headers()
+            header_tup = None
+            error_body = None
             for item in fwd:
+                if isinstance(item, tuple):
+                    header_tup = item
+                    if isinstance(item[0], int) and item[0] >= 400:
+                        # upstream error status on the head -> reflect it
+                        error_body = item[1] if len(item) > 1 else b""
+                    continue
                 if isinstance(item, bytes):
+                    # if we saw an error status, deliver as SSE error line
+                    if error_body is not None:
+                        self.wfile.write(b"data: " + error_body + b"\n\n")
+                        self.wfile.flush()
+                        error_body = None
+                        continue
                     self.wfile.write(item)
                     self.wfile.flush()
-                # item may be (status, headers) tuple on first yield — skip write
+            if error_body is not None and header_tup and isinstance(header_tup[0], int) and header_tup[0] >= 400:
+                self.wfile.write(b"data: " + error_body + b"\n\n")
+                self.wfile.flush()
             return
 
         # non-streaming: buffer + copy

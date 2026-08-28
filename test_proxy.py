@@ -168,7 +168,6 @@ try:
 
     # streaming request -> SSE streamed-back (content-type text/event-stream)
     sess_stream = f"""
-import socket
 import urllib.request
 req = urllib.request.Request("http://127.0.0.1:{PROXY_PORT}/v1/chat/completions",
     data='{{"model":"t","stream":true,"messages":[]}}'.encode(),
@@ -183,11 +182,38 @@ try:
 except Exception as e:
     print("ERR=" + str(e))
 """
-    import subprocess, sys
     pr = subprocess.run([sys.executable, "-c", sess_stream], capture_output=True, text=True, timeout=15)
     out = pr.stdout
     check("CT=text/event-stream" in out or "CT=text/event-stream; charset" in out,
           f"streaming request -> SSE content-type (got {out.strip()[:80]})")
+
+    # EDGE: upstream unreachable -> clean 502 (point a prox at a dead port)
+    env_dead = dict(os.environ, UPSTREAM_BASE_URL="http://127.0.0.1:1/v1", PROXY_PORT=str(PROXY_PORT+50))
+    proc_dead = subprocess.Popen([sys.executable, "proxy_server.py"], env=env_dead,
+                                 cwd=os.path.dirname(os.path.abspath(__file__)),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.0)
+    try:
+        req502 = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT+50}/v1/chat/completions",
+            data=json.dumps({"model":"t","messages":[]}).encode(),
+            headers={"Content-Type":"application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req502, timeout=8)
+            check(False, "dead upstream should 502")
+        except urllib.error.HTTPError as e:
+            check(e.code == 502 or e.code == 500, f"dead upstream -> 502/500 (got {e.code})")
+    finally:
+        proc_dead.kill()
+
+    # EDGE: oversized request -> 413 handled upstream? (proxy caps at 20MB)
+    # send an 21MB body would be slow; instead verify malformed JSON -> 400
+    req_bad = urllib.request.Request(BASE + "/v1/chat/completions", data=b'NOT_JSON',
+        headers={"Content-Type":"application/json"}, method="POST")
+    try:
+        urllib.request.urlopen(req_bad, timeout=8)
+        check(False, "malformed JSON should 400")
+    except urllib.error.HTTPError as e:
+        check(e.code == 400, f"malformed JSON -> 400 (got {e.code})")
 finally:
     proc.kill()
 

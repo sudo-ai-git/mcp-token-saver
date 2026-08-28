@@ -1,0 +1,40 @@
+# fly.toml — mcp-token-saver-proxy (request-path token optimizer)
+# Dedupes/caches in the request path before forwarding to UPSTREAM_BASE_URL.
+# Requires: `fly secrets set UPSTREAM_BASE_URL=<your provider base url>`.
+app = "mcp-token-saver-proxy"
+primary_region = "iad"
+kill_signal = "SIGINT"
+kill_timeout = 30
+
+[[restart]]
+  policy = "always"
+  retries = 5
+
+[build]
+  dockerfile = "deploy/Dockerfile.proxy"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 80
+  [[services.ports]]
+    handlers = ["tls"]
+    port = 443
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "40s"
+    method = "get"
+    path = "/healthz"
+    protocol = "http"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  PROXY_PORT = "8080"
+  # UPSTREAM_BASE_URL must be set via `fly secrets set UPSTREAM_BASE_URL=<url>`
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
