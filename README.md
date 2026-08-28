@@ -6,6 +6,8 @@
 
 **🪙 Try Pro (1-hour trial) / Go Pro (crypto):** [product page](https://sudo-ai-git.github.io/mcp-token-saver/)
 
+mcp-name: io.github.sudo-ai-git/mcp-token-saver
+
 ## What it does
 
 For a conversation/tool log, it reports:

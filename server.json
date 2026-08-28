@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sudo-ai-git/mcp-token-saver",
+  "description": "Deterministic, no-LLM token profiler for agent conversations. Shows per-role token spend, exact + near-duplicate payloads, and redundant-token savings. MIT core, auditable.",
+  "repository": {
+    "url": "https://github.com/sudo-ai-git/mcp-token-saver",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-token-saver",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
