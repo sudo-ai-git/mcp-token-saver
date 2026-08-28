@@ -198,27 +198,30 @@ def _content_tier_compute(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _require_auth(handler: BaseHTTPRequestHandler) -> bool:
     expected = os.environ.get("MCP_TOKEN_SAVER_API_KEY", "")
-    # Subscription gate: if an order entitlement is configured, a request that
-    # presents an X-Order-Id must have a valid unexpired entitlement (402 if not).
-    # Static-key auth (if set) still applies as a second layer.
+    static_ok = bool(expected) and handler.headers.get("Authorization", "") == f"Bearer {expected}"
+    # Static key (if set) is ALWAYS a valid authorize — a bearer of the key may
+    # call regardless of subscription (operator-level access).
+    if static_ok:
+        return True
     subscription_enabled = os.environ.get("MCP_TOKEN_SAVER_SUB", "").lower() in ("1", "true", "yes")
-    order = handler.headers.get("X-Order-Id", "")
-    if subscription_enabled and order:
+    if subscription_enabled:
+        # FAIL-CLOSED: every request must present a valid unexpired entitlement
+        # via X-Order-Id. Missing order OR expired entitlement => 402. This is
+        # the Pro gate — do not silently allow a no-order request.
+        order = handler.headers.get("X-Order-Id", "")
         try:
             from pro_subscription import require_pro
+            if order and require_pro(order):
+                return True
         except Exception:
-            subscription_enabled = False  # sub module missing => fall through to key
-        else:
-            if not require_pro(order):
-                handler.send_response(402)
-                handler._send_json({"error": "payment_required",
-                                    "detail": "no valid Pro entitlement for X-Order-Id"})
-                return False
+            pass
+        handler.send_response(402)
+        handler._send_json({"error": "payment_required",
+                            "detail": "a valid Pro entitlement (X-Order-Id) is required"})
+        return False
+    # subscription not enabled: fall back to static key (or allow if none set)
     if not expected:
         return True  # no key configured => allow (dev/local only)
-    auth = handler.headers.get("Authorization", "")
-    if auth == f"Bearer {expected}":
-        return True
     handler.send_response(401)
     handler._send_json({"error": "unauthorized"})
     return False
