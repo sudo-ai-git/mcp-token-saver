@@ -198,6 +198,22 @@ def _content_tier_compute(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _require_auth(handler: BaseHTTPRequestHandler) -> bool:
     expected = os.environ.get("MCP_TOKEN_SAVER_API_KEY", "")
+    # Subscription gate: if an order entitlement is configured, a request that
+    # presents an X-Order-Id must have a valid unexpired entitlement (402 if not).
+    # Static-key auth (if set) still applies as a second layer.
+    subscription_enabled = os.environ.get("MCP_TOKEN_SAVER_SUB", "").lower() in ("1", "true", "yes")
+    order = handler.headers.get("X-Order-Id", "")
+    if subscription_enabled and order:
+        try:
+            from pro_subscription import require_pro
+        except Exception:
+            subscription_enabled = False  # sub module missing => fall through to key
+        else:
+            if not require_pro(order):
+                handler.send_response(402)
+                handler._send_json({"error": "payment_required",
+                                    "detail": "no valid Pro entitlement for X-Order-Id"})
+                return False
     if not expected:
         return True  # no key configured => allow (dev/local only)
     auth = handler.headers.get("Authorization", "")
