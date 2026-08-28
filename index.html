@@ -60,26 +60,28 @@
   No black box. You can read every line.</p>
 
   <div class="stat">
-    <div class="box"><div class="num">~30×</div><div class="lbl">the same tool result can re-enter context in a long loop</div></div>
-    <div class="box"><div class="num">23%</div><div class="lbl">typical redundant tokens in a tool-heavy agent session</div></div>
-    <div class="box"><div class="num">1 hr</div><div class="lbl">free trial — run it, see the number, done</div></div>
+    <div class="box"><div class="num">962</div><div class="lbl">agent requests in a single day, one model</div></div>
+    <div class="box"><div class="num">~289K</div><div class="lbl">input tokens per request — a context you can't see</div></div>
+    <div class="box"><div class="num">278M</div><div class="lbl">tokens / day, invisible until you export and stare</div></div>
   </div>
+  <p class="meta" style="margin-top:10px;font-size:12px">Real case — our own stack, one 24h window: <b>962 requests, 278,112,413 input tokens (~289K/req), $5.61</b>. Running loops this size, you can't see the redundancy until it's surfaced. That's the gap this tool closes.</p>
 
   <div class="card">
-    <h2>The problem is the resend, not the model</h2>
-    <p class="meta">Agent frameworks append every tool result to a growing context. When a tool
-    returns a large payload (a Kubernetes manifest, a log tail, a GitHub API response), that same
-    payload is re-sent to the model on <b>every subsequent turn</b> — whether or not it changed.
-    The token hammer gets heavier the longer the loop runs, and the bill climbs with it.</p>
+    <h2>The real savings story</h2>
+    <p class="meta">Long agent loops grow context on every turn. Practically, native prompt
+    caching catches much of the re-send — but <b>you can't see any of it</b>. In our measured case,
+    only <b>0.78%</b> of input was cache-miss, yet that still meant <b>2.17M fresh tokens (~$0.92/day,
+    ~$28/mo on one model)</b> with no way to know which payloads caused them. And across multiple
+    providers (we span 13 models), caches can't share at all — the redundancy compounds.</p>
     <div class="ex">
-<span class="s"># what a typical turn resends (same bytes, billed again)</span>
-<span class="r">[-] tool_result: </span>{<span class="s">"apiVersion"</span>:<span class="s">"v1"</span>,<span class="s">"spec"</span>: <span class="s">"... 3,842 tokens of unchanged JSON ..."</span>}
-<span class="a">[+] tool_result (same sha256)</span> <span class="s">← re-sent again, same cost</span>
-<span class="a">[+] tool_result (same sha256)</span> <span class="s">← re-sent again, same cost</span>
+<span class="s"># where the recoverable spend hides</span>
+<span class="a">[+] 99.2%  cache-HIT </span> <span class="s">already handled by native prompt cache</span>
+<span class="r">[-] 0.78%  cache-MISS 2.17M tokens/day </span> <span class="s">← a client-side dedupe layer CAN reclaim part of this</span>
+<span class="a">[+] 13 models, separate caches </span> <span class="s">← cross-provider redundancy no single cache solves</span>
     </div>
-    <p class="meta">mcp-token-saver flags every exact re-send (SHA-256) and every near-duplicate tail
-    (n-gram overlap), then gives you one number: total redundant tokens — and how much of the bill
-    they are.</p>
+    <p class="meta">mcp-token-saver flags every exact re-send (SHA-256) and near-duplicate tail
+    (n-gram overlap) per role, then gives you one number: redundant tokens across the whole run —
+    including the slice native caching can't touch, and the cross-model slice no cache ever will.</p>
   </div>
 
   <div class="card">
