@@ -24,4 +24,4 @@ dependencies = ["mcp>=1.0,<2"]
 mcp-token-saver = "server:main_entry"
 
 [tool.setuptools]
-py-modules = ["mcp_token_saver", "server"]
+py-modules = ["mcp_token_saver", "server", "pro_client"]

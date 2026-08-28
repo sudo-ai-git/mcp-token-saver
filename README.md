@@ -37,6 +37,32 @@ the transparent, verifiable baseline.
 |---|---|
 | `profile_tokens` | analyze a message log → per-role tokens, exact/near dupes, savings %, cache keys |
 | `duplicate_payload_report` | given a list of payload strings, report exact/near duplicates |
+| `prepare_assessment` | (PRO) de-identify a log for the paid assessment — two tiers, no raw content by default |
+| `assess_upgrade_value` | (PRO) call the paid endpoint for the full-optimizer delta |
+
+## The PRO / paid upsell: "what would YOUR setup really save?"
+
+The free core reports **generic** savings (SHA exact-dedupe + n-gram near-dupe).
+The **paid assessment** answers the harder question: *"how much more would a
+non-exact / semantic optimizer save on top of that?"* — using a proprietary
+memo engine that we run **only server-side**.
+
+**Sauce protection (the deal, hard):**
+- The **method and weights are never shipped, sent, or returned.** They run on
+  our assessment server, opaque; the client receives only a savings number.
+- `prepare_assessment` de-identifies to one of two tiers:
+  - **tier `hash`** — sends ONLY `role` + token count + `content_sha256` +
+    length. No raw content ever leaves the machine. Returns a labeled *proxy*
+    delta.
+  - **tier `content`** — additionally sends **secrets-scrubbed** text (a public
+    pattern redactor blanks `sk-`, `AKIA…`, `password …`, bearer `auth`/`secret`
+    keys, card-run digits). Accurate delta; method still server-side/opaque.
+- **Honest limit:** the scrubber is a *pattern* matcher, not semantic security.
+  For a hard privacy guarantee use tier `hash` (sends no content at all).
+- **This repo ships the client + contract only.** Wiring the paid backend
+  engine is the gated service — the client documents exactly what may be sent
+  and what comes back, so the upsell is real and saleable without exposing the
+  crown jewel.
 
 ## Run
 
