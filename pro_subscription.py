@@ -288,6 +288,7 @@ class ProSubStore:
                         issued_at=datetime.fromisoformat(rec.get("issued_at", "")),
                         expires_at=datetime.fromisoformat(exp) if exp else datetime.now(timezone.utc),
                         active=bool(rec.get("active", True)),
+                        kind=rec.get("ent_kind", "paid"),
                     )
                 except Exception:
                     continue
@@ -303,6 +304,7 @@ class ProSubStore:
             "issued_at": ent.issued_at.isoformat(),
             "expires_at": ent.expires_at.isoformat(),
             "active": True,
+            "ent_kind": ent.kind,   # persist trial|paid so reload restores it
         })
         self._entitlements[ent.order_id] = ent
         return ent

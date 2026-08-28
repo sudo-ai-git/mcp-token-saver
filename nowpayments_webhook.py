@@ -80,6 +80,43 @@ class NowPaymentsWebhookHandler(BaseHTTPRequestHandler):
             ipn_secret=creds.get("NOWPAYMENTS_IPN_SECRET", ""),
         )
 
+    def _handle_create_payment(self) -> None:
+        """POST /nowpayments/create — mint a Pro subscription payment.
+
+        Body (JSON) may set {price_usd, coins, order_id}. Returns the
+        NowPayments payment object incl. pay_url + payment_id so the product
+        page can send the buyer to their crypto payment window.
+        """
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length).decode("utf-8", "replace") if length else "{}"
+        try:
+            req = json.loads(body) if body else {}
+        except Exception:
+            req = {}
+        price = float(req.get("price_usd") or ps.WIN_PRICE_USD)
+        # Single pay_currency (NowPayments rejects a `currencies` list). The
+        # product page passes the buyer's chosen coin, defaulting to BTC.
+        coin = req.get("coin") or "btc"
+        coins = [coin]
+        order = req.get("order_id") or f"pro_{int(__import__('time').time()*1000)}"
+        try:
+            pay = self._get_pay()
+            result = pay.create_payment(price_usd=price, coins=coins, order_id=order)
+            # API-created payments have NO hosted pay_url — the buyer pays by
+            # sending the exact amount to `pay_address`. Surface that + the
+            # expected amount so the product page can show a payment window.
+            self._send({
+                "order_id": order,
+                "payment_id": result.get("payment_id"),
+                "pay_url": result.get("pay_url"),
+                "pay_address": result.get("pay_address"),
+                "pay_amount": result.get("pay_amount"),
+                "pay_currency": result.get("pay_currency"),
+                "payment_status": result.get("payment_status"),
+            })
+        except Exception as e:
+            self._send({"error": "create_failed", "detail": str(e)[:120]}, 502)
+
     # -- GET --------------------------------------------------------------
     def do_GET(self) -> None:
         if self.path.startswith("/nowpayments/healthz"):
@@ -101,8 +138,51 @@ class NowPaymentsWebhookHandler(BaseHTTPRequestHandler):
             return
         self._send({"error": "not_found"}, 404)
 
-    # -- POST (IPN) -------------------------------------------------------
+    def _handle_trial(self) -> None:
+        """POST /nowpayments/trial — issue a 1-hour Pro trial entitlement.
+
+        Body (JSON) may set {order_id}. Returns the trial entitlement + expiry.
+        Idempotent per order_id (existing entitlement -> reported, not re-minted).
+        """
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length).decode("utf-8", "replace") if length else "{}"
+        try:
+            req = json.loads(body) if body else {}
+        except Exception:
+            req = {}
+        order = req.get("order_id") or f"trial_{int(__import__('time').time()*1000)}"
+        store = self._get_store()
+        ent = store.get(order)
+        if ent is not None:
+            self._send({"order_id": order, "entitled": True,
+                        "kind": ent.kind, "expires_at": ent.expires_at.isoformat(),
+                        "already_has": True})
+            return
+        try:
+            trial = ps.issue_trial(store, order)
+        except ps.DuplicateWebhookError:
+            self._send({"order_id": order, "entitled": True, "kind": "trial",
+                        "note": "already active"}, 200)
+            return
+        except Exception as e:
+            self._send({"error": "trial_failed", "detail": str(e)[:120]}, 502)
+            return
+        self._send({"order_id": order, "entitled": True, "kind": "trial",
+                    "issued_at": trial.issued_at.isoformat(),
+                    "expires_at": trial.expires_at.isoformat()})
+
+    # -- POST -------------------------------------------------------------
     def do_POST(self) -> None:
+        # /nowpayments/trial — start a 1-hour Pro trial
+        if self.path.startswith("/nowpayments/trial"):
+            self._handle_trial()
+            return
+        # /nowpayments/create — create a Pro subscription payment (called from
+        # the product page "Get Pro" button). Returns a NowPayments pay_url the
+        # buyer opens to pay in their chosen crypto.
+        if self.path.startswith("/nowpayments/create"):
+            self._handle_create_payment()
+            return
         if self.path != "/nowpayments/ipn":
             self._send({"error": "not_found"}, 404); return
         length = int(self.headers.get("Content-Length", 0) or 0)
