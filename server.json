@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "pypi",
-      "identifier": "mcp-token-saver",
+      "identifier": "mcp-token-saver-pro",
       "version": "1.0.0",
       "transport": {
         "type": "stdio"

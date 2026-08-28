@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp-token-saver"
+name = "mcp-token-saver-pro"
 version = "1.0.0"
 description = "Deterministic, no-LLM token-usage profiler + redundancy advisor for agent conversations. Shows where tokens go (per-role), detects exact + near-duplicate payloads, reports savings potential. Public methods only (SHA-256 exact dedupe + n-gram overlap) — auditable, no proprietary semantic layer."
 readme = "README.md"
