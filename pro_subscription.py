@@ -348,7 +348,13 @@ class NowPayments:
             "price_amount": float(price_usd),
             "price_currency": "usd",
             "order_id": order_id or f"pro_{int(time.time()*1000)}",
-            "ipn_callback_url": "https://yourhost.example/webhook/nowpayments",
+            # Live NowPayments IPN callback (the Fly-hosted webhook). This is
+            # set per-payment so no dashboard navigation is required; the
+            # webhook HMAC-verifies and activates the 30-day entitlement.
+            "ipn_callback_url": os.environ.get(
+                "NOWPAYMENTS_CALLBACK_URL",
+                "https://mcp-token-saver-pro.fly.dev/nowpayments/ipn",
+            ),
         }
         if coins:
             payload["pay_currency"] = coins[0]  # preferred; NowPayments fills invoice
