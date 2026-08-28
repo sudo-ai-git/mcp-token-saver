@@ -113,6 +113,24 @@
     <div class="status" id="heroTrialStatus" style="text-align:center;margin-top:14px"></div>
   </div>
 
+  <!-- FLAGSHIP: PROXY (stop the waste IN the request path) -->
+  <section style="margin-top:24px">
+    <div style="background:linear-gradient(135deg,rgba(56,189,248,.08),rgba(74,222,128,.05));border:1px solid rgba(56,189,248,.35);border-radius:18px;padding:28px 30px">
+      <div class="sec-label" style="color:var(--cyan)">⚡ Flagship — the request-path proxy</div>
+      <h2 style="color:var(--cyan);margin-bottom:6px">Stop the waste <i>in the request path</i> — not just after.</h2>
+      <p class="sec-sub">Not just an analyzer that reports waste. <b>mcp-token-saver-proxy</b> sits between your agent
+        and any OpenAI-compatible provider, deduping redundant tool results <i>before</i> they're billed.
+        On a realistic tool-heavy session it removed <b style="color:var(--accent)">~95%</b> of re-sent input tokens.</p>
+      <div style="margin-top:14px;font-size:13px;color:var(--muted)">
+        ✅ Live right now: <code style="color:var(--cyan)">https://mcp-token-saver-proxy.fly.dev</code><br>
+        Point any agent at it via <code style="color:var(--cyan)">base_url</code> — OpenAI-compatible, streams, deterministic, no-LLM.
+      </div>
+      <div class="cta-row" style="margin-top:16px;justify-content:flex-start">
+        <a class="btn ghost" style="color:var(--cyan);border-color:rgba(56,189,248,.5)" href="https://github.com/sudo-ai-git/mcp-token-saver">View the proxy source · <b>start routing through it</b></a>
+      </div>
+    </div>
+  </section>
+
   <!-- STATS -->
   <div class="stats">
     <div class="stat-box"><div class="num acc">278M</div><div class="lbl">tokens in one day</div><div class="tag">our stack, measured</div></div>
