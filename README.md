@@ -19,6 +19,20 @@ inference). See `show_savings.py` to reproduce.
 
 **🪙 Try Pro (1-hour trial) / Go Pro (crypto):** [product page](https://sudo-ai-git.github.io/mcp-token-saver/)
 
+## Route your agent through the proxy (10 seconds)
+
+```bash
+# OpenAI-compatible — just point your client's base_url at the proxy:
+export OPENAI_BASE_URL="https://mcp-token-saver-proxy.fly.dev"
+export OPENAI_API_KEY="<your-provider-key>"   # forwarded unchanged
+
+# your existing client calls work unchanged; the proxy strips redundant
+# tool results before they reach your provider, and returns an
+# X-Token-Saver-Saved header so you can see the savings per request.
+```
+
+Self-host instead: `UPSTREAM_BASE_URL=https://api.openai.com/v1 python3 proxy_server.py`
+
 mcp-name: io.github.sudo-ai-git/mcp-token-saver
 
 ---
