@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mcp-token-saver Pro — cut redundant agent tokens</title>
+<meta name="description" content="Deterministic, no-LLM token profiler for agent conversations. See exactly where tokens go, catch exact + near-duplicate payloads, and cut the bill. 1-hour free trial. Pay in crypto.">
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#121823; --panel2:#0f1520; --border:#1e2a3a;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#38d9a9; --accent2:#20c997;
+    --warn:#ffa94d; --err:#ff8787;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.6;padding:0 20px}
+  .wrap{max-width:900px;margin:0 auto;padding:40px 0 80px}
+  .tag{display:inline-block;background:rgba(56,217,169,.12);color:var(--accent);border:1px solid rgba(56,217,169,.3);padding:2px 12px;border-radius:20px;font-size:12px;letter-spacing:.5px;margin-bottom:16px}
+  h1{font-size:clamp(26px,5vw,42px);font-weight:700;line-height:1.15;margin-bottom:14px}
+  h1 .hl{color:var(--accent)}
+  .sub{color:var(--muted);font-size:16px;max-width:640px;margin-bottom:32px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
+  h2{font-size:17px;margin-bottom:14px;color:var(--accent)}
+  h3{font-size:14px;margin:16px 0 6px}
+  ul{list-style:none}
+  li{padding:6px 0 6px 22px;position:relative}
+  li::before{content:"▹";position:absolute;left:0;color:var(--accent)}
+  .btn{display:inline-block;background:var(--accent2);color:#04140d;font-weight:700;border:none;padding:14px 28px;border-radius:8px;font-size:15px;cursor:pointer;text-decoration:none;font-family:inherit;transition:.15s}
+  .btn:hover{background:var(--accent);transform:translateY(-1px)}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .steps{counter-reset:s;margin-top:8px}
+  .step{display:flex;gap:14px;padding:10px 0;align-items:flex-start}
+  .step .n{counter-increment:s;flex:0 0 28px;height:28px;border:1px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--accent)}
+  .step .n::before{content:counter(s)}
+  .meta{color:var(--muted);font-size:13px}
+  code{background:var(--panel2);padding:2px 7px;border-radius:5px;font-size:.9em;border:1px solid var(--border);color:var(--accent)}
+  .paybox{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:14px;word-break:break-all}
+  .paybox .label{color:var(--muted);font-size:12px;margin-bottom:4px}
+  .paybox .val{font-size:14px}
+  .err{color:var(--err);min-height:20px;margin-top:10px;font-size:13px}
+  .status{color:var(--warn);min-height:20px;margin-top:10px;font-size:13px}
+  .foot{margin-top:40px;color:var(--muted);font-size:12px;text-align:center}
+  select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-family:inherit;font-size:14px}
+  .coinrow{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">MCP SERVER · NO-LLM · AUDITABLE</span>
+  <h1>Stop re-paying for <span class="hl">the same tokens</span></h1>
+  <p class="sub">mcp-token-saver is a deterministic token-usage profiler for agent
+  conversations. It shows you exactly where your tokens go — per role — and flags the
+  exact + near-duplicate payloads eating your bill. Run it against any message log and
+  see the savings number in seconds.</p>
+
+  <div class="card">
+    <h2>What it reports</h2>
+    <ul>
+      <li><b>Token spend by role</b> — system / user / assistant / tool: where the cost actually is</li>
+      <li><b>Exact-duplicate payloads</b> — the same big tool JSON sent 30 turns apart (the classic bloat)</li>
+      <li><b>Near-duplicate tails</b> — repeated templated results / log tails that are ~the same</li>
+      <li><b>System-prompt bloat</b> — if `system` dominates, a static-cache / summarization flag</li>
+      <li><b>Savings potential</b> — one number: redundant tokens / total</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>The "no sauce" contract</h2>
+    <p class="meta">Only public, auditable techniques: SHA-256 exact dedupe, word n-gram
+    Jaccard overlap, model-agnostic token approximation. No embeddings, no tuned weights,
+    no hidden semantic layer. Indepedently verifiable, line by line. MIT core.</p>
+  </div>
+
+  <div class="card">
+    <h2>Try it free — 1 hour</h2>
+    <p class="meta">Start a 1-hour Pro assessment of your own conversation log. The value
+    is an instant number, so an hour is all it takes to see it.</p>
+    <div style="margin-top:14px">
+      <a class="btn ghost" href="https://github.com/sudo-ai-git/mcp-token-saver">Get the free tool</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Go Pro — 30 days</h2>
+    <p class="meta">The paid backend (semantic delta assessment, de-identified, server-side).
+    One flat price, paid in crypto.</p>
+    <div class="meta" style="margin-top:14px;color:var(--accent);font-size:26px;font-weight:700">
+      $250<span style="font-size:13px;color:var(--muted)"> / 30 days</span>
+    </div>
+    <div class="coinrow">
+      <span class="meta">Pay with:</span>
+      <select id="coin">
+        <option value="btc">BTC</option>
+        <option value="eth">ETH</option>
+        <option value="xrp">XRP</option>
+        <option value="sol">SOL</option>
+        <option value="usdttrc20">USDT (TRC20)</option>
+        <option value="usdtsol">USDT (Solana)</option>
+      </select>
+    </div>
+    <button class="btn" id="buyBtn">Create payment</button>
+    <div class="status" id="status"></div>
+    <div class="err" id="err"></div>
+    <div id="paybox" style="display:none"></div>
+  </div>
+
+  <div class="foot">mcp-token-saver · deterministic · crypto-native · transparent</div>
+</div>
+
+<script>
+  const API_BASE = "https://mcp-token-saver-pro.fly.dev";
+  const buyBtn = document.getElementById("buyBtn");
+  const status = document.getElementById("status");
+  const err = document.getElementById("err");
+  const paybox = document.getElementById("paybox");
+
+  buyBtn.addEventListener("click", async () => {
+    buyBtn.disabled = true;
+    status.textContent = "Creating payment…";
+    err.textContent = "";
+    const coin = document.getElementById("coin").value;
+    try {
+      const res = await fetch(API_BASE + "/nowpayments/create", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({price_usd: 250, coin})
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "request failed");
+      paybox.style.display = "block";
+      paybox.innerHTML = `
+        <div class="paybox">
+          <div class="label">Send exactly</div>
+          <div class="val">${data.pay_amount} ${data.pay_currency.toUpperCase()}</div>
+          <div class="label" style="margin-top:10px">to this address (reference order ${data.order_id})</div>
+          <div class="val">${data.pay_address}</div>
+          <div class="label" style="margin-top:10px">Status</div>
+          <div class="val">${data.payment_status}</div>
+        </div>`;
+      status.textContent = "Payment created. Send the exact amount to activate 30 days of Pro automatically.";
+    } catch (e) {
+      err.textContent = "Payment creation failed: " + e.message;
+    } finally {
+      buyBtn.disabled = false;
+      setTimeout(() => status.textContent = "", 12000);
+    }
+  });
+</script>
+</body>
+</html>
